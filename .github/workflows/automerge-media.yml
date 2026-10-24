@@ -1,0 +1,30 @@
+name: Medya onerisini otomatik birlestir
+
+# PR sadece kokte .jpg/.jpeg/.png/.mp4 ekliyorsa (silme/degistirme yok) otomatik birlestirir.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dosyalari dogrula ve birlestir
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | "\(.status) \(.filename) \(.size // 0)"' > files.txt
+          cat files.txt
+          if [ ! -s files.txt ]; then echo "degisen dosya yok"; exit 1; fi
+          if grep -vE '^added [0-9]{4}-[a-z0-9-]+\.(jpg|jpeg|png|mp4) ' files.txt; then
+            echo "izin verilmeyen degisiklik var (sadece kokte yeni gorsel/video eklenebilir)"; exit 1
+          fi
+          gh pr merge "$PR" --repo "$REPO" --squash --delete-branch
